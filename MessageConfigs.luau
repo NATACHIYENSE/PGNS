@@ -2,7 +2,7 @@
 
 --[[
 	This ModuleScript defines all of the visual parameters of PGNS.
-	It also defines the types used by the API.
+	It also defines the types used by both APIs.
 ]]
 
 local tws = game:GetService('TweenService')
@@ -33,31 +33,78 @@ export type MessageType = {
 	Given a notification message element, preloads the UI instances by yielding.
 ]]
 local function preloadMessageObjectAsync(obj: Object)
-	local visual = obj:WaitForChild('Visual')
-	visual:WaitForChild('UIPadding')
-	local container = visual:WaitForChild('Container')
-	container:WaitForChild('UIListLayout')
-	container:WaitForChild('UICorner')
-	container:WaitForChild('UIPadding')
-	container:WaitForChild('UIStroke')
+	local vis = obj:WaitForChild('Visual')
+	vis:WaitForChild('UICorner')
+	vis:WaitForChild('UIListLayout')
+	vis:WaitForChild('UIPadding')
+	vis:WaitForChild('UIStroke')
+end
+
+--[[
+	Generates the ASCII-style visual of a loading bar used in the notification messages.
+	uses native codegen to preserve performance.
+]]
+@native local function generateLoadingBarText(percent: number): string
+	local index: number = percent//4
+	return string.sub('IIIIIIIIIIIIIIIIIIIIIIIII', 1, index)
+		..'<font color="#888">'
+		..string.sub('IIIIIIIIIIIIIIIIIIIIIIIII', index+1)
+		..'</font>'
 end
 
 local A = { --for caching purposes; use this however you like with no standards
-	sizeOff = UDim2.new(0, 10, 0, -1),
-	sizeOn = UDim2.new(0, 10, 0, 28),
+	clr_white = Color3.new(1, 1, 1),
+	clr_black = Color3.new(0, 0, 0),
+	clr_r = Color3.new(1, 0, 0),
+	clr_g = Color3.new(0, 1, 0),
+	clr_y = Color3.new(1, 1, 0),
+	
+	sizeOff = UDim2.new(0, 10, 0, 0),
+	sizeOnAbs = msgEx.Size,
+	sizeOnScale = UDim2.new(0, 10, 1, 0),
+	
+	twiLong = TweenInfo.new(.5, Enum.EasingStyle.Quart, Enum.EasingDirection.InOut),
+	twiLongDelayed = TweenInfo.new(.25, Enum.EasingStyle.Quart, Enum.EasingDirection.InOut, 0, false, .25),
+	
 	twiGeneric = TweenInfo.new(.25, Enum.EasingStyle.Circular, Enum.EasingDirection.InOut),
+	twiGenericFast = TweenInfo.new(.1, Enum.EasingStyle.Circular, Enum.EasingDirection.InOut),
+	twiGenericDelayed = TweenInfo.new(.15, Enum.EasingStyle.Circular, Enum.EasingDirection.InOut, 0, false, 0.1),
 	twiExpo = TweenInfo.new(.25, Enum.EasingStyle.Exponential, Enum.EasingDirection.Out),
-	twiFlicker = TweenInfo.new(.1, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut, 4, true),
-	twiFlickerRapid = TweenInfo.new(.05, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut, 7, true),
+	twiSpring = TweenInfo.new(0.6, Enum.EasingStyle.Elastic, Enum.EasingDirection.Out),
+	
+	twiFlicker = TweenInfo.new(.1, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut, 2, true),
+	twiFlickerRapid = TweenInfo.new(.05, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut, 4, true),
 	twiFlickerSoft = TweenInfo.new(.25, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut, 1, true),
-	twiSpring = TweenInfo.new(1, Enum.EasingStyle.Elastic, Enum.EasingDirection.Out)
 }
 
 local S: {Sound} = {
+	[0] = script:WaitForChild('sound/changed'),
 	script:WaitForChild('sound/default'),
 	script:WaitForChild('sound/warning'),
 	script:WaitForChild('sound/error'),
 	script:WaitForChild('sound/success')
+}
+
+local generics = {
+	End = function(o: Object)
+		tws:Create(o, A.twiLong, {Size = A.sizeOff}):Play()
+		tws:Create(o.Visual, A.twiGeneric, {GroupTransparency = 1}):Play()
+		tws:Create(o.Visual.UIStroke, A.twiGenericFast, {Transparency = 1}):Play()
+		o.Visual.GroupColor3 = A.clr_black
+		return -A.twiLong.Time
+	end,
+	Changed = function(o: Object)
+		S[0]:Play()
+		
+		local vis = o.Visual
+		vis.GroupColor3 = A.clr_black
+		tws:Create(vis, A.twiGenericFast, {GroupColor3 = A.clr_white}):Play()
+		
+		local stroke = o.Visual.UIStroke
+		if not stroke.Enabled then return end
+		stroke.Transparency = 0
+		tws:Create(stroke, A.twiExpo, {Transparency = 0.5}):Play()
+	end,
 }
 
 --[[
@@ -72,27 +119,42 @@ local messageTypes: {[string]: MessageType} = {
 		DefaultPriority = 0,
 		Sound = S[1],
 		Init = function(o: Object)
+			local vis = o.Visual
+			local stroke = vis.UIStroke
+			
 			o.Size = A.sizeOff
 			--o.Visual.Size = A.sizeOff
-			o.Visual.GroupTransparency = 1
-			local stroke = o.Visual.Container.UIStroke
+			vis.GroupTransparency = 1	
 			stroke.Thickness = 0
-			tws:Create(o, A.twiGeneric, {Size = A.sizeOn}):Play()
-			tws:Create(o.Visual, A.twiGeneric, {Size = A.sizeOn, GroupTransparency = 0}):Play()
-			tws:Create(stroke, A.twiGeneric, {Thickness = 2}):Play()
+			tws:Create(o, A.twiGenericFast, {Size = A.sizeOnAbs}):Play()
+			tws:Create(vis, A.twiGeneric, {Size = A.sizeOnScale, GroupTransparency = 0}):Play()
+			tws:Create(stroke, A.twiGenericDelayed, {Thickness = 2}):Play()
 			return -A.twiGeneric.Time
 		end,
-		End = function(o: Object)
-			tws:Create(o, A.twiGeneric, {Size = A.sizeOff}):Play()
-			tws:Create(o.Visual, A.twiGeneric, {Size = A.sizeOff, GroupTransparency = 1}):Play()
-			tws:Create(o.Visual.Container.UIStroke, A.twiGeneric, {Thickness = 0}):Play()
+		End = generics.End,
+		Changed = generics.Changed,
+	},
+	Hint = {
+		Name = 'Hint',
+		DefaultDuration = 5,
+		DefaultPriority = 50,
+		Init = function(o: Object)
+			local vis = o.Visual
+			
+			o.Size = A.sizeOff
+			o.UIPadding.PaddingTop = UDim.new(0, 2)
+			o.UIPadding.PaddingBottom = UDim.new(0, 2)
+			vis.UIStroke.Enabled = false
+			vis.GroupTransparency = 1
+			vis.GroupColor3 = A.clr_black
+			vis.BackgroundTransparency = 1
+			tws:Create(o, A.twiGeneric, {Size = A.sizeOnAbs}):Play()
+			tws:Create(vis, A.twiGeneric, {GroupTransparency = 0, BackgroundTransparency = .5}):Play()
+			tws:Create(vis, A.twiGenericDelayed, {GroupColor3 = A.clr_white}):Play()
 			return -A.twiGeneric.Time
 		end,
-		Changed = function(o: Object)
-			local stroke = o.Visual.Container.UIStroke
-			stroke.Thickness = 0
-			tws:Create(o.Visual.Container.UIStroke, A.twiExpo, {Thickness = 2}):Play()
-		end,
+		End = generics.End,
+		Changed = generics.Changed,
 	},
 	Warning = {
 		Name = 'Warning',
@@ -100,32 +162,26 @@ local messageTypes: {[string]: MessageType} = {
 		DefaultPriority = 100,
 		Sound = S[2],
 		Init = function(o: Object)
+			local vis = o.Visual
+			local stroke = vis.UIStroke
+			
 			o.Size = A.sizeOff
 			--o.Visual.Size = A.sizeOff
-			o.Visual.GroupTransparency = 1
-			local stroke = o.Visual.Container.UIStroke
-			stroke.Thickness = 0
-			stroke.Color = Color3.new(1, 1, 0)
-			o.Visual.Position = UDim2.new(.5, 0, -5, 0)
-			tws:Create(o, A.twiGeneric, {Size = A.sizeOn}):Play()
-			tws:Create(o.Visual, A.twiGeneric, {Size = A.sizeOn, GroupTransparency = 0}):Play()
-			tws:Create(stroke, A.twiGeneric, {Thickness = 2}):Play()
-			tws:Create(stroke, A.twiFlicker, {Color = Color3.new(1, 1, 1), Transparency = 0}):Play()
-			tws:Create(o.Visual.Container, A.twiFlicker, {BackgroundColor3 = Color3.new(1, 1, 1)}):Play()
-			tws:Create(o.Visual, A.twiSpring, {Position = UDim2.fromScale(.5, .5)}):Play()
+			vis.GroupTransparency = 1		
+			stroke.Thickness = 2
+			stroke.Transparency = 0.5
+			stroke.Color = A.clr_y
+			vis.Position = UDim2.new(.5, 0, -5, 0)
+			tws:Create(o, A.twiGeneric, {Size = A.sizeOnAbs}):Play()
+			tws:Create(vis, A.twiGeneric, {Size = A.sizeOnScale, GroupTransparency = 0}):Play()
+			--tws:Create(stroke, A.twiGenericDelayed, {Thickness = 2, Transparency = 0.5}):Play()
+			tws:Create(stroke, A.twiFlicker, {Color = A.clr_white, Thickness = 8, Transparency = 0.75}):Play()
+			tws:Create(vis, A.twiFlicker, {GroupColor3 = A.clr_black}):Play()
+			tws:Create(vis, A.twiSpring, {Position = UDim2.fromScale(.5, .5)}):Play()
 			return -A.twiGeneric.Time
 		end,
-		End = function(o: Object)
-			tws:Create(o, A.twiGeneric, {Size = A.sizeOff}):Play()
-			tws:Create(o.Visual, A.twiGeneric, {Size = A.sizeOff, GroupTransparency = 1}):Play()
-			tws:Create(o.Visual.Container.UIStroke, A.twiGeneric, {Thickness = 0}):Play()
-			return -A.twiGeneric.Time
-		end,
-		Changed = function(o: Object)
-			local stroke = o.Visual.Container.UIStroke
-			stroke.Thickness = 0
-			tws:Create(o.Visual.Container.UIStroke, A.twiExpo, {Thickness = 2}):Play()
-		end,
+		End = generics.End,
+		Changed = generics.Changed,
 	},
 	Error = {
 		Name = 'Error',
@@ -133,31 +189,25 @@ local messageTypes: {[string]: MessageType} = {
 		DefaultPriority = 200,
 		Sound = S[3],
 		Init = function(o: Object)
+			local vis = o.Visual
+			local stroke = vis.UIStroke
+			
 			o.Size = A.sizeOff
 			--o.Visual.Size = A.sizeOff
-			o.Visual.GroupTransparency = 1
-			local stroke = o.Visual.Container.UIStroke
+			vis.GroupTransparency = 1
 			stroke.Thickness = 0
-			stroke.Color = Color3.new(1, 0, 0)
-			o.Visual.Position = UDim2.new(10, 0, .5, 0)
-			tws:Create(o, A.twiGeneric, {Size = A.sizeOn}):Play()
-			tws:Create(o.Visual, A.twiGeneric, {Size = A.sizeOn, GroupTransparency = 0}):Play()
-			tws:Create(stroke, A.twiGeneric, {Thickness = 2}):Play()
-			tws:Create(stroke, A.twiFlickerRapid, {Color = Color3.new(1, 1, 1), Transparency = 0}):Play()
-			tws:Create(o.Visual, A.twiSpring, {Position = UDim2.fromScale(.5, .5)}):Play()
+			stroke.Color = A.clr_r
+			vis.Position = UDim2.new(10, 0, .5, 0)
+			tws:Create(o, A.twiGeneric, {Size = A.sizeOnAbs}):Play()
+			tws:Create(vis, A.twiGeneric, {Size = A.sizeOnScale, GroupTransparency = 0}):Play()
+			tws:Create(stroke, A.twiGenericDelayed, {Thickness = 2}):Play()
+			tws:Create(stroke, A.twiFlickerRapid, {Color = A.clr_white, Transparency = 0}):Play()
+			tws:Create(vis, A.twiFlickerRapid, {GroupColor3 = A.clr_r}):Play()
+			tws:Create(vis, A.twiSpring, {Position = UDim2.fromScale(.5, .5)}):Play()
 			return -A.twiGeneric.Time
 		end,
-		End = function(o: Object)
-			tws:Create(o, A.twiGeneric, {Size = A.sizeOff}):Play()
-			tws:Create(o.Visual, A.twiGeneric, {Size = A.sizeOff, GroupTransparency = 1}):Play()
-			tws:Create(o.Visual.Container.UIStroke, A.twiGeneric, {Thickness = 0}):Play()
-			return -A.twiGeneric.Time
-		end,
-		Changed = function(o: Object)
-			local stroke = o.Visual.Container.UIStroke
-			stroke.Thickness = 0
-			tws:Create(o.Visual.Container.UIStroke, A.twiExpo, {Thickness = 2}):Play()
-		end,
+		End = generics.End,
+		Changed = generics.Changed,
 	},
 	Success = {
 		Name = 'Success',
@@ -165,32 +215,25 @@ local messageTypes: {[string]: MessageType} = {
 		DefaultPriority = 150,
 		Sound = S[4],
 		Init = function(o: Object)
+			local vis = o.Visual
+			local stroke = vis.UIStroke
+			
 			o.Size = A.sizeOff
 			--o.Visual.Size = A.sizeOff
-			o.Visual.GroupTransparency = 1
-			local stroke = o.Visual.Container.UIStroke
+			vis.GroupTransparency = 1
 			stroke.Thickness = 0
-			stroke.Color = Color3.new(0, 1, 0)
-			o.Visual.Position = UDim2.new(.5, 0, -5, 0)
-			tws:Create(o, A.twiGeneric, {Size = A.sizeOn}):Play()
-			tws:Create(o.Visual, A.twiGeneric, {Size = A.sizeOn, GroupTransparency = 0}):Play()
-			tws:Create(stroke, A.twiGeneric, {Thickness = 2}):Play()
-			tws:Create(stroke, A.twiFlickerSoft, {Color = Color3.new(1, 1, 1), Transparency = 0}):Play()
-			tws:Create(o.Visual.Container, A.twiFlickerSoft, {BackgroundColor3 = Color3.new(0, 1, 0)}):Play()
-			tws:Create(o.Visual, A.twiSpring, {Position = UDim2.fromScale(.5, .5)}):Play()
+			stroke.Color = A.clr_g
+			vis.Position = UDim2.new(.5, 0, -5, 0)
+			tws:Create(o, A.twiGeneric, {Size = A.sizeOnAbs}):Play()
+			tws:Create(vis, A.twiGeneric, {Size = A.sizeOnScale, GroupTransparency = 0}):Play()
+			tws:Create(stroke, A.twiGenericDelayed, {Thickness = 2}):Play()
+			tws:Create(stroke, A.twiFlickerSoft, {Color = A.clr_g, Transparency = 1}):Play()
+			tws:Create(vis, A.twiFlickerSoft, {BackgroundColor3 = A.clr_g}):Play()
+			tws:Create(vis, A.twiSpring, {Position = UDim2.fromScale(.5, .5)}):Play()
 			return -A.twiGeneric.Time
 		end,
-		End = function(o: Object)
-			tws:Create(o, A.twiGeneric, {Size = A.sizeOff}):Play()
-			tws:Create(o.Visual, A.twiGeneric, {Size = A.sizeOff, GroupTransparency = 1}):Play()
-			tws:Create(o.Visual.Container.UIStroke, A.twiGeneric, {Thickness = 0}):Play()
-			return -A.twiGeneric.Time
-		end,
-		Changed = function(o: Object)
-			local stroke = o.Visual.Container.UIStroke
-			stroke.Thickness = 0
-			tws:Create(o.Visual.Container.UIStroke, A.twiExpo, {Thickness = 2}):Play()
-		end,
+		End = generics.End,
+		Changed = generics.Changed,
 	},
 }
 for name, entry in messageTypes do --runtime sanity check
@@ -200,6 +243,7 @@ end
 local module = {
 	PreloadMessageObjectAsync = preloadMessageObjectAsync,
 	Types = messageTypes,
+	GenerateLoadingBarText = generateLoadingBarText,
 	msgEx = msgEx,
 	txtEx = txtEx,
 	imgEx = imgEx,

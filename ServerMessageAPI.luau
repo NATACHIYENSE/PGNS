@@ -10,19 +10,38 @@ local res = game:GetService('ReplicatedStorage')
 local main = res:WaitForChild('PGNS')
 local f = require(main:WaitForChild('MessageFunctions'))
 local broadcast = main:WaitForChild('Broadcast')
+local broadcastUnreliable = main:WaitForChild('BroadcastUnreliable')
 
 --[[
 	Send a notification to the specified player.
+	Consider using ephemeralToPlayer() if the notification or notification change is not important.
 ]]
 local function broadcastToPlayer(p: Player, msg: f.Constructor)
 	broadcast:FireClient(p, f.Serialize(msg))
 end
 
 --[[
+	Send a notification to the specified player via UnreliableRemoteEvent.
+	Using this instead of broadcastToPlayer() is recommended if it's a notification that changes often.
+]]
+local function ephemeralToPlayer(p: Player, msg: f.Constructor)
+	broadcastUnreliable:FireClient(p, f.Serialize(msg))
+end
+
+--[[
 	Send a notification to all players in the server.
+	Consider using ephemeralServer() if the notification or notification change is not important.
 ]]
 local function broadcastServer(msg: f.Constructor)
 	broadcast:FireAllClients(f.Serialize(msg))
+end
+
+--[[
+	Send a notification to all players in the server via UnreliableRemoteEvent.
+	Using this instead of broadcastServer() is recommended if it's a notification that changes often.
+]]
+local function ephemeralServer(msg: f.Constructor)
+	broadcastUnreliable:FireAllClients(f.Serialize(msg))
 end
 
 --[[
@@ -43,21 +62,21 @@ _G.tell = broadcastToPlayer
 _G.say = broadcastServer
 _G.saydev = function(msg: f.Constructor)
 	table.insert(msg, 1, '<font color="#F00"><b>[Developer]</b></font>')
-	msg.Type = msg.Type or 'Warning'
-	msg.Priority = 1e6 + (msg.Priority or 0)
+	msg.Type = msg.Type or msg.t or 'Warning'
+	msg.Priority = 1e6 + (msg.Priority or msg.p or 0)
 	broadcastServer(msg)	
 end
 _G.psa = function(msg: f.Constructor)
 	table.insert(msg, 1, '<font color="#FF0"><b>[PSA]</b></font>')
-	msg.Type = msg.Type or 'Warning'
-	msg.Priority = 1e6 + (msg.Priority or 0)
+	msg.Type = msg.Type or msg.t or 'Warning'
+	msg.Priority = 1e6 + (msg.Priority or msg.p or 0)
 	broadcastServer(msg)
 end
 _G.sayglobal = broadcastGlobal
 _G.psaglobal = function(msg: f.Constructor)
 	table.insert(msg, 1, '<font color="#FF0"><b>[PSA]</b></font>')
-	msg.Type = msg.Type or 'Warning'
-	msg.Priority = 1e6 + (msg.Priority or 0)
+	msg.Type = msg.Type or msg.t or 'Warning'
+	msg.Priority = 1e6 + (msg.Priority or msg.p or 0)
 	broadcastGlobal(msg)	
 end
 
@@ -67,7 +86,10 @@ end)
 
 local module = {
 	BroadcastPlayer = broadcastToPlayer,
+	EphemeralPlayer = ephemeralToPlayer,
 	BroadcastAll = broadcastServer,
+	EphemeralAll = ephemeralServer,
+	
 	broadcastGlobal = broadcastGlobal,
 }
 

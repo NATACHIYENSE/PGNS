@@ -36,8 +36,9 @@ end
 ]]
 broadcast.OnServerEvent:Connect(function(pl: Player, msg: f.Serialized)
 	if f.PermissionToBroadcast(pl) then
-		api.BroadcastAll(f.Deserialize(msg))
+		broadcast:FireAllClients(msg)
 	else
+		api.BroadcastPlayer(pl, {':x:', "PGNS: Access denied (lacking permission)", t='Error'})
 		warn(`PGNS: player {pl.Name} lacks permission to broadcast`)
 	end
 end)
